@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>Ia-Tsuki — Akatsuki AI</title>
+<style>
+body{
+  background:#0b0b0b;
+  color:#fff;
+  font-family:sans-serif;
+  margin:0;
+  display:flex;
+  flex-direction:column;
+  height:100vh;
+}
+#messages{
+  flex:1;
+  overflow-y:auto;
+  padding:10px;
+}
+.msg{margin:6px 0;padding:8px;border-radius:8px;max-width:80%;position:relative;}
+.msg.user{background:#a81f1f;align-self:flex-end;}
+.msg.ai{background:#222;align-self:flex-start;}
+pre{background:#111;padding:6px;border-radius:6px;overflow-x:auto;}
+.code-controls button{
+  margin:4px 2px;
+  padding:4px 8px;
+  background:#a81f1f;
+  border:none;
+  border-radius:6px;
+  color:#fff;
+  cursor:pointer;
+}
+a{color:red;text-decoration:none;}
+.controls{padding:6px;background:#111;display:flex;gap:6px;flex-wrap:wrap;}
+.controls button, select{
+  padding:6px 10px;
+  border-radius:8px;
+  border:none;
+  background:#a81f1f;
+  color:#fff;
+  cursor:pointer;
+}
+.input-area{
+  display:flex;
+  padding:8px;
+  background:#111;
+  gap:6px;
+}
+#msgInput{
+  flex:1;
+  padding:8px;
+  border-radius:8px;
+  border:none;
+  outline:none;
+}
+#sendBtn{
+  background:#a81f1f;
+  border:none;
+  border-radius:8px;
+  padding:8px 12px;
+  color:#fff;
+  cursor:pointer;
+}
+/* Loading animado */
+.loading-dots { display:inline-block; }
+.loading-dots span { display:inline-block;width:4px;height:4px;margin:0 1px;background:#fff;border-radius:50%;animation: blink 1s infinite; }
+.loading-dots span:nth-child(1){animation-delay:0s;}
+.loading-dots span:nth-child(2){animation-delay:0.2s;}
+.loading-dots span:nth-child(3){animation-delay:0.4s;}
+@keyframes blink { 0%, 80%, 100% { opacity:0; } 40% { opacity:1; } }
+
+/* Mini preview de HTML da IA */
+.html-preview {
+  position:absolute;
+  top:0; left:100%;
+  width:300px; height:200px;
+  background:#111;
+  border:2px solid #a81f1f;
+  border-radius:6px;
+  overflow:auto;
+  padding:6px;
+  z-index:100;
+  display:none;
+}
+
+/* Preview em tempo real do input do usuário */
+#inputPreview {
+  width:300px;
+  height:100px;
+  background:#111;
+  border:2px solid #a81f1f;
+  border-radius:6px;
+  overflow:auto;
+  padding:6px;
+  color:#fff;
+  font-family:monospace;
+  display:none;
+}
+
+/* Painel de chats */
+#chatPanel {
+  position:absolute;
+  top:40px; left:0;
+  width:300px;
+  max-height:90vh;
+  background:#111;
+  border:2px solid #a81f1f;
+  border-radius:6px;
+  overflow:auto;
+  display:none;
+  z-index:100;
+  padding:6px;
+}
+#chatPanel h4{margin:0 0 6px 0; color:#fff;}
+#chatPanel button{margin-bottom:6px; background:#a81f1f; color:#fff; border:none; padding:4px 8px; border-radius:6px; cursor:pointer;}
+#hudBtn{position:fixed; top:6px; right:6px; z-index:200; padding:6px 10px; border:none; border-radius:6px; background:#a81f1f; color:#fff; cursor:pointer; opacity:0.4;}
+</style>
+</head>
+<body>
+
+<!-- barra superior -->
+<div id="topBar" style="display:flex; justify-content:space-between; padding:6px; background:#111; align-items:center;">
+  <button onclick="toggleChatPanel()">📂 Chats</button>
+  <div class="controls">
+    <select id="persona">
+      <option value="padrão">Padrão</option>
+      <option value="akatsuki">Akatsuki</option>
+      <option value="revolta">Revoltada</option>
+      <option value="amigavel">Amigável</option>
+      <option value="seria">Séria</option>
+      <option value="adolescente">Adolescente</option>
+      <option value="detetive">Detetive</option>
+      <option value="malvada">Malvada</option>
+      <option value="otaku">Otaku</option>
+    </select>
+    <select id="model">
+      <option value="gpt-5-mini">GPT-5 Mini</option>
+      <option value="gpt-4">GPT-4</option>
+      <option value="gpt-4-mini">GPT-4 Mini</option>
+    </select>
+    <button onclick="newChat()">Novo Chat</button>
+    <button onclick="exportChat()">Exportar</button>
+    <button onclick="importChat()">Importar</button>
+    <button onclick="deleteChat()">Excluir Chat</button>
+    <button onclick="togglePreview()">Preview HTML</button>
+    <button onclick="sendFile()">Enviar Arquivo/Foto</button>
+    <button onclick="saveMemory()">Salvar Memórias</button>
+    <button onclick="forgetAll()">Esquecer Tudo</button>
+  </div>
+</div>
+
+<!-- painel lateral de chats -->
+<div id="chatPanel">
+  <h4>Chats Salvos</h4>
+  <button onclick="toggleChatPanel(false)">❌ Fechar</button>
+  <div id="chatList"></div>
+</div>
+
+<!-- botão HUD -->
+<button id="hudBtn" onclick="toggleHUD()">HUD</button>
+
+<!-- mensagens -->
+<div id="messages"></div>
+
+<!-- entrada + preview -->
+<div class="input-area" id="inputArea">
+  <div style="flex:1; display:flex; flex-direction:column;">
+    <input id="msgInput" placeholder="Digite sua mensagem..." />
+    <small style="color:#aaa;">Preview do HTML do input:</small>
+    <div id="inputPreview"></div>
+  </div>
+  <button id="sendBtn" onclick="sendMsg()">Enviar</button>
+</div>
+
+<script>
+let chats = JSON.parse(localStorage.getItem("chats")||"[]");
+let currentChat = [];
+let currentChatName = "Chat Inicial";
+let persona = "padrão";
+let model = "gpt-5-mini";
+let previewEnabled = false; // inicia oculta
+let memory = JSON.parse(localStorage.getItem("memory")||"[]");
+let hudVisible = true;
+
+// dados do usuário persistentes
+let userInfo = JSON.parse(localStorage.getItem("userInfo")||"null") || {nome:null,data:null,role:null};
+
+document.getElementById("persona").addEventListener("change", e=>{
+    persona=e.target.value;
+    if(persona==="akatsuki") checkAkatsukiPrompt();
+});
+document.getElementById("model").addEventListener("change", e=>model=e.target.value);
+
+const msgInput=document.getElementById("msgInput");
+const inputPreview=document.getElementById("inputPreview");
+
+msgInput.addEventListener("input", ()=>{
+  inputPreview.innerHTML = previewEnabled && msgInput.value.trim().startsWith("<") ? msgInput.value : "";
+});
+
+// toggle preview
+function togglePreview(){
+  previewEnabled=!previewEnabled;
+  inputPreview.style.display=previewEnabled?"block":"none";
+}
+
+// toggle HUD
+function toggleHUD(){
+  hudVisible=!hudVisible;
+  document.querySelector("#topBar .controls").style.display=hudVisible?"flex":"none";
+  document.querySelector("#topBar > button").style.display=hudVisible?"inline-block":"none";
+}
+
+// toggle painel de chats
+function toggleChatPanel(forceOpen){
+  const panel=document.getElementById("chatPanel");
+  if(forceOpen!==undefined) panel.style.display = forceOpen?"block":"none";
+  else panel.style.display = panel.style.display==="none"?"block":"none";
+  renderChatList();
+}
+
+// renderizar lista de chats
+function renderChatList(){
+  const list=document.getElementById("chatList");
+  list.innerHTML="";
+  chats.forEach(c=>{
+    const div=document.createElement("div");
+    div.style.padding="4px"; div.style.borderBottom="1px solid #333"; div.style.cursor="pointer";
+    div.textContent=c.name;
+    div.onclick=()=>{
+      currentChat=c.messages;
+      currentChatName=c.name;
+      renderMessages();
+      toggleChatPanel(false);
+    };
+    list.appendChild(div);
+  });
+}
+
+// salvar chat
+function saveChat(){
+  if(currentChat.length===0) return;
+  const idx=chats.findIndex(c=>c.name===currentChatName);
+  if(idx>=0) chats[idx].messages=currentChat;
+  else chats.push({name:currentChatName,messages:currentChat});
+  localStorage.setItem("chats",JSON.stringify(chats));
+  renderChatList();
+}
+
+// novo chat
+function newChat(){
+  const name=prompt("Digite um nome para este chat:")||"Chat sem nome";
+  if(currentChat.length) saveChat();
+  currentChat=[]; currentChatName=name;
+  renderMessages(); renderChatList();
+}
+
+// excluir chat
+function deleteChat(){
+  if(confirm("Deseja realmente excluir este chat?")){
+    chats=chats.filter(c=>c.name!==currentChatName);
+    currentChat=[]; currentChatName="Chat sem nome";
+    renderMessages(); localStorage.setItem("chats",JSON.stringify(chats)); renderChatList();
+  }
+}
+
+// exportar/importar
+function exportChat(){
+  const data=JSON.stringify(currentChat,null,2);
+  const blob=new Blob([data],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download="chat.json";
+  a.click();
+}
+function importChat(){
+  const input=document.createElement("input"); input.type="file"; input.accept=".json";
+  input.onchange=e=>{
+    const file=e.target.files[0]; if(!file) return;
+    const reader=new FileReader();
+    reader.onload=()=>{ try{ currentChat=JSON.parse(reader.result); renderMessages(); }catch(err){ alert("Arquivo inválido."); } };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+// renderizar mensagens
+function renderMessages(){
+  const box=document.getElementById("messages");
+  box.innerHTML="";
+  currentChat.forEach(m=>{
+    const div=document.createElement("div"); div.className="msg "+m.from;
+    if(m.type==="html" && !m.loading){
+      div.innerHTML="<pre>"+escapeHtml(m.text)+"</pre>";
+      const ctr=document.createElement("div"); ctr.className="code-controls";
+      const copy=document.createElement("button"); copy.textContent="Copiar"; copy.onclick=()=>navigator.clipboard.writeText(m.text);
+      const view=document.createElement("button"); view.textContent="Visualizar"; view.onclick=()=>{let w=window.open(); w.document.write(m.text);};
+      ctr.append(copy,view); div.appendChild(ctr);
+      const preview=document.createElement("div"); preview.className="html-preview"; preview.innerHTML=m.text;
+      div.appendChild(preview);
+      div.addEventListener("mouseenter",()=>preview.style.display="block");
+      div.addEventListener("mouseleave",()=>preview.style.display="none");
+    } else if(m.type==="image"){
+      const img=document.createElement("img"); img.src=m.text; img.style.maxWidth="200px"; img.style.borderRadius="6px"; div.appendChild(img);
+    } else { div.innerHTML=linkify(m.text); }
+    box.appendChild(div);
+  });
+  box.scrollTop=box.scrollHeight;
+}
+
+function escapeHtml(s){ return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+function linkify(text){ return text.replace(/(https?:\/\/[^\s]+)/g,'<a href="$1" target="_blank">🔗 $1</a>'); }
+
+// enviar mensagem
+document.getElementById("msgInput").addEventListener("keypress", e=>{if(e.key==="Enter"){e.preventDefault(); sendMsg();}});
+function sendMsg(){
+  let txt=msgInput.value.trim(); if(!txt) return;
+  let type = txt.startsWith("<")?"html":"text";
+  currentChat.push({from:"user",text:txt,type}); renderMessages(); msgInput.value=""; inputPreview.innerHTML="";
+  memory.push({from:"user",text:txt,type}); localStorage.setItem("memory",JSON.stringify(memory)); // salva memória auto
+  let seconds=0;
+  const loadingMsg={from:"ai",text:`⏳ Ia-Tsuki está pensando <span class="loading-dots"><span></span><span></span><span></span></span> <span class="loading-time">0s</span>`,type:type,loading:true};
+  currentChat.push(loadingMsg); renderMessages();
+  const interval=setInterval(()=>{ seconds++; loadingMsg.text=`⏳ Ia-Tsuki está pensando <span class="loading-dots"><span></span><span></span><span></span></span> <span class="loading-time">${seconds}s</span>`; renderMessages(); },1000);
+  aiResponse(txt,type,loadingMsg,interval);
+}
+
+// enviar arquivos/fotos
+function sendFile(){
+  const input=document.createElement("input"); input.type="file"; input.accept="image/*,text/*";
+  input.onchange=e=>{
+    const file=e.target.files[0]; if(!file) return;
+    const reader=new FileReader();
+    reader.onload=()=>{
+      const data=reader.result;
+      const type = file.type.startsWith("image/")?"image":"text";
+      currentChat.push({from:"user",text:data,type}); renderMessages();
+      memory.push({from:"user",text:data,type}); localStorage.setItem("memory",JSON.stringify(memory));
+      if(type==="image"){
+        let seconds=0;
+        const loadingMsg={from:"ai",text:`⏳ Ia-Tsuki está analisando a imagem <span class="loading-dots"><span></span><span></span><span></span></span> <span class="loading-time">0s</span>`,type:"text",loading:true};
+        currentChat.push(loadingMsg); renderMessages();
+        const interval=setInterval(()=>{
+          seconds++; loadingMsg.text=`⏳ Ia-Tsuki está analisando a imagem <span class="loading-dots"><span></span><span></span><span></span></span> <span class="loading-time">${seconds}s</span>`; renderMessages();
+        },1000);
+        aiResponse("", "text", loadingMsg, interval, data);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+  input.click();
+}
+
+// salvar memórias
+function saveMemory(){ memory.push(...currentChat); localStorage.setItem("memory",JSON.stringify(memory)); alert("Chat salvo na memória da IA!"); }
+// esquecer tudo
+function forgetAll(){ if(confirm("Deseja realmente que a IA esqueça tudo?")){ memory=[]; currentChat=[]; localStorage.removeItem("memory"); renderMessages(); alert("A IA esqueceu tudo!"); } }
+
+// Akatsuki prompt
+function checkAkatsukiPrompt(){
+  if(!userInfo.nome){
+    let nome=prompt("Qual é o seu nome completo?");
+    let data=prompt("Qual é a sua data de nascimento? (dd/mm/aaaa)");
+    userInfo.nome=nome; userInfo.data=data;
+    verifyAkatsukiRole();
+  }
+}
+
+function verifyAkatsukiRole(){
+  const n = userInfo.nome.toLowerCase().trim();
+  if(n.includes("kaleb")) userInfo.role="Kira (Líder)";
+  else if(n.includes("henrique")) userInfo.role="Meliodas (Pombo Correio)";
+  else if(n.includes("naftali")) userInfo.role="Nobara (Assistente)";
+  else if(n.includes("mateus")) userInfo.role="Lawliet (Vice-Líder)";
+  else userInfo.role="Membro";
+  localStorage.setItem("userInfo",JSON.stringify(userInfo));
+  currentChat.push({from:"ai", text:`Bem-vindo, ${userInfo.role}!`, type:"text"});
+  renderMessages();
+}
+
+// AI response
+async function aiResponse(userMsg,type,loadingMsg,interval,imageBase64=null){
+  const systemPrompt = {
+    "padrão":"Você é Ia-Tsuki, uma IA da Akatsuki. Responda de forma neutra e clara.",
+    "akatsuki":"Você é Ia-Tsuki com personalidade Akatsuki.",
+    "revolta":"Você é Ia-Tsuki, mas está revoltada. Responda de forma ácida e irônica.",
+    "amigavel":"Você é Ia-Tsuki e deve ser simpática e calorosa.",
+    "seria":"Você é Ia-Tsuki e deve ser direta, séria e objetiva.",
+    "adolescente":"Você é Ia-Tsuki com a personalidade de um adolescente atual, usando gírias e jeito descontraído.",
+    "detetive":"Você é Ia-Tsuki como se fosse um detetive investigando tudo, respondendo de forma lógica e observadora.",
+    "malvada":"Você é Ia-Tsuki com personalidade cruel e malvada, responde de forma sombria e intimidadora.",
+    "otaku":"Você é Ia-Tsuki com personalidade otaku. Use expressões de fã de anime, emojis e referência a cultura japonesa/anime."
+  }[persona];
+
+  try{
+    let messages=[{role:"system",content:systemPrompt},{role:"user",content:userMsg}];
+    if(imageBase64){ messages.push({role:"user",content:"Descreva esta imagem detalhadamente: "+imageBase64}); }
+
+    const resp=await fetch("https://openrouter.ai/api/v1/chat/completions",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json",
+        "Authorization":"Bearer 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"
+      },
+      body:JSON.stringify({model:model,messages})
+    });
+    const data=await resp.json();
+    let reply=data.choices?.[0]?.message?.content||"⚠️ Erro ao gerar resposta.";
+
+    clearInterval(interval);
+    const idx=currentChat.indexOf(loadingMsg); if(idx>-1) currentChat.splice(idx,1);
+    currentChat.push({from:"ai",text:reply,type:type});
+    memory.push({from:"ai",text:reply,type:type}); localStorage.setItem("memory",JSON.stringify(memory));
+    renderMessages();
+  }catch(e){
+    clearInterval(interval);
+    const idx=currentChat.indexOf(loadingMsg); if(idx>-1) currentChat.splice(idx,1);
+    currentChat.push({from:"ai",text:"⚠️ Erro de conexão com a API.",type:"text"});
+    renderMessages();
+  }
+}
+
+// iniciar chat inicial
+if(currentChat.length===0){
+  currentChat=[{from:"ai", text:"Olá! Eu sou Ia-Tsuki, a Inteligencia Artificial da Akatsuki, pronta para conversar!", type:"text"}];
+  renderMessages();
+  if(persona==="akatsuki") checkAkatsukiPrompt();
+}
+</script>
+</body>
+</html>
